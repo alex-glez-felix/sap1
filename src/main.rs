@@ -1,8 +1,36 @@
-type Address = u8;
 type OpCode = u8;
 type Word = u8;
 
 const RAM_SIZE: usize = 16;
+
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
+struct Address(u8);
+
+impl Address {
+    fn new(byte: u8) -> Option<Self> {
+        if byte as usize >= RAM_SIZE {
+            return None;
+        }
+
+        Some(Address(byte))
+    }
+
+    fn from_word(word: Word) -> Self {
+        Address(word & 0x0F)
+    }
+
+    fn next(self) -> Self {
+        Address((self.0 + 1) & 0x0F)
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
+    }
+
+    fn get(self) -> u8 {
+        self.0
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum Instruction {
@@ -17,9 +45,9 @@ impl Instruction {
     #[expect(clippy::identity_op, reason = "simetría con los demás opcodes")]
     fn encode(self) -> Word {
         match self {
-            Instruction::Lda(operand) => 0x00 | operand,
-            Instruction::Add(operand) => 0x10 | operand,
-            Instruction::Sub(operand) => 0x20 | operand,
+            Instruction::Lda(operand) => 0x00 | operand.get(),
+            Instruction::Add(operand) => 0x10 | operand.get(),
+            Instruction::Sub(operand) => 0x20 | operand.get(),
             Instruction::Out => 0xE0,
             Instruction::Hlt => 0xF0,
         }
@@ -31,7 +59,7 @@ fn opcode(word: Word) -> OpCode {
 }
 
 fn operand(word: Word) -> Address {
-    word & 0x0F
+    Address::from_word(word)
 }
 
 fn decode(word: Word) -> Option<Instruction> {
@@ -60,7 +88,7 @@ struct Cpu {
 impl Cpu {
     fn new(program: [Word; RAM_SIZE]) -> Self {
         Self {
-            pc: 0x0,
+            pc: Address::from_word(0x00),
             a: 0x00,
             out: 0x00,
             ram: program,
@@ -73,8 +101,8 @@ impl Cpu {
             return;
         }
 
-        let word = self.ram[self.pc as usize];
-        self.pc = (self.pc + 1) & 0x0F;
+        let word = self.ram[self.pc.index()];
+        self.pc = self.pc.next();
 
         let Some(instruction) = decode(word) else {
             self.halted = true;
@@ -82,9 +110,9 @@ impl Cpu {
         };
 
         match instruction {
-            Instruction::Lda(operand) => self.a = self.ram[operand as usize],
-            Instruction::Add(operand) => self.a = self.a.wrapping_add(self.ram[operand as usize]),
-            Instruction::Sub(operand) => self.a = self.a.wrapping_sub(self.ram[operand as usize]),
+            Instruction::Lda(operand) => self.a = self.ram[operand.index()],
+            Instruction::Add(operand) => self.a = self.a.wrapping_add(self.ram[operand.index()]),
+            Instruction::Sub(operand) => self.a = self.a.wrapping_sub(self.ram[operand.index()]),
             Instruction::Out => self.out = self.a,
             Instruction::Hlt => self.halted = true,
         }
@@ -101,19 +129,20 @@ mod tests {
 
     type InstructionConstructor = fn(Address) -> Instruction;
 
-    fn cpu_with(instruction: InstructionConstructor, address: Address, value: Word) -> Cpu {
+    fn cpu_with(instruction: InstructionConstructor, index: u8, value: Word) -> Cpu {
         let mut program = [0x00; RAM_SIZE];
+        let address = Address::from_word(index);
         program[0] = instruction(address).encode();
-        program[address as usize] = value;
+        program[address.index()] = value;
         Cpu::new(program)
     }
 
     #[test]
     fn decodes_each_opcode() {
         let cases = [
-            (0x09, Instruction::Lda(9)),
-            (0x1f, Instruction::Add(15)),
-            (0x22, Instruction::Sub(2)),
+            (0x09, Instruction::Lda(Address::from_word(9))),
+            (0x1f, Instruction::Add(Address::from_word(15))),
+            (0x22, Instruction::Sub(Address::from_word(2))),
             (0xEF, Instruction::Out),
             (0xF0, Instruction::Hlt),
         ];
@@ -164,7 +193,11 @@ mod tests {
         for (opcode, expected) in instructions {
             for operand in 0..=0x0F {
                 let word = opcode | operand;
-                assert_eq!(decode(word), Some(expected(operand)), "word = {word:#04x}")
+                assert_eq!(
+                    decode(word),
+                    Some(expected(Address::from_word(operand))),
+                    "word = {word:#04x}"
+                )
             }
         }
     }
@@ -173,7 +206,7 @@ mod tests {
     fn new_cpu_starts_in_reset_state() {
         let program = [0xF1; RAM_SIZE];
         let cpu = Cpu::new(program);
-        assert_eq!(cpu.pc, 0x0);
+        assert_eq!(cpu.pc, Address::from_word(0x0));
         assert_eq!(cpu.a, 0x00);
         assert_eq!(cpu.out, 0x00);
         assert!(!cpu.halted);
@@ -193,15 +226,15 @@ mod tests {
     fn step_advances_pc() {
         let mut cpu = Cpu::default();
         cpu.step();
-        assert_eq!(cpu.pc, 1);
+        assert_eq!(cpu.pc.get(), 1);
     }
 
     #[test]
     fn pc_wraps_after_last_address() {
         let mut cpu = Cpu::default();
-        cpu.pc = 15;
+        cpu.pc = Address::from_word(15);
         cpu.step();
-        assert_eq!(cpu.pc, 0);
+        assert_eq!(cpu.pc.get(), 0);
     }
 
     #[test]
@@ -290,14 +323,14 @@ mod tests {
     fn runs_sample_program() {
         let mut program = [0x00; RAM_SIZE];
 
-        program[0] = Instruction::Lda(8).encode();
+        program[0] = Instruction::Lda(Address::from_word(8)).encode();
         program[8] = 100;
-        program[1] = Instruction::Add(9).encode();
+        program[1] = Instruction::Add(Address::from_word(9)).encode();
         program[9] = 7;
-        program[2] = Instruction::Sub(10).encode();
+        program[2] = Instruction::Sub(Address::from_word(10)).encode();
         program[10] = 58;
         program[3] = Instruction::Out.encode();
-        program[4] = Instruction::Add(11).encode();
+        program[4] = Instruction::Add(Address::from_word(11)).encode();
         program[11] = 1;
         program[5] = Instruction::Hlt.encode();
         let mut cpu = Cpu::new(program);
