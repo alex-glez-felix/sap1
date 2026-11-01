@@ -240,7 +240,7 @@ mod tests {
         let mut cpu = Cpu::new(program);
         cpu.a = 34;
         cpu.step();
-        assert_eq!(cpu.out, cpu.a);
+        assert_eq!(cpu.out, 34);
     }
 
     #[test]
