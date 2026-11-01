@@ -2,6 +2,8 @@ type Address = u8;
 type OpCode = u8;
 type Word = u8;
 
+const RAM_SIZE: usize = 16;
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum Instruction {
     Lda(Address),
@@ -30,6 +32,26 @@ fn decode(word: Word) -> Option<Instruction> {
         0x0E => Some(Instruction::Out),
         0x0F => Some(Instruction::Hlt),
         _ => None,
+    }
+}
+
+struct Cpu {
+    pc: Address,
+    a: Word,
+    out: Word,
+    ram: [Word; RAM_SIZE],
+    halted: bool,
+}
+
+impl Cpu {
+    fn new(program: [Word; RAM_SIZE]) -> Self {
+        Self {
+            pc: 0x0,
+            a: 0x00,
+            out: 0x00,
+            ram: program,
+            halted: false,
+        }
     }
 }
 
@@ -89,5 +111,16 @@ mod tests {
                 assert_eq!(decode(word), Some(expected(operand)), "word = {word:#04x}")
             }
         }
+    }
+
+    #[test]
+    fn new_cpu_starts_in_reset_state() {
+        let program = [0xF1; RAM_SIZE];
+        let cpu = Cpu::new(program);
+        assert_eq!(cpu.pc, 0x0);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.out, 0x00);
+        assert!(!cpu.halted);
+        assert_eq!(cpu.ram, program);
     }
 }
