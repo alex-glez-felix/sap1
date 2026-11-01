@@ -38,9 +38,10 @@ fn main() {
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
+
+    type Constructor = fn(Address) -> Instruction;
 
     #[test]
     fn decodes_each_opcode() {
@@ -76,7 +77,7 @@ mod tests {
 
     #[test]
     fn operand_instructions_take_low_nibble() {
-        let instructions: [(u8, fn(Address) -> Instruction); 3] = [
+        let instructions: [(u8, Constructor); 3] = [
             (0x00, Instruction::Lda),
             (0x10, Instruction::Add),
             (0x20, Instruction::Sub),
