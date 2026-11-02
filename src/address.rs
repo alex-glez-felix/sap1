@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn new_rejects_first_invalid_address() {
-        assert_eq!(Address::new((15) as u8), Some(Address(15)));
+        assert_eq!(Address::new(15), Some(Address(15)));
     }
 
     #[test]

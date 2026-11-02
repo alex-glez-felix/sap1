@@ -30,6 +30,30 @@ impl Cpu {
         }
     }
 
+    pub fn current_instruction(&self) -> Option<Instruction> {
+        decode(self.ram[self.pc.index()])
+    }
+
+    pub fn a(&self) -> Word {
+        self.a
+    }
+
+    pub fn pc(&self) -> Address {
+        self.pc
+    }
+
+    pub fn out(&self) -> Word {
+        self.out
+    }
+
+    pub fn halted(&self) -> bool {
+        self.halted
+    }
+
+    pub fn ram(&self) -> &[Word; RAM_SIZE] {
+        &self.ram
+    }
+
     pub fn step(&mut self) {
         if self.halted {
             return;
@@ -52,15 +76,28 @@ impl Cpu {
         }
     }
 
-    pub fn run(&mut self, max_steps: usize) -> RunOutcome {
+    pub fn run_with(
+        &mut self,
+        max_steps: usize,
+        mut on_step: impl FnMut(&Cpu, Option<Instruction>),
+    ) -> RunOutcome {
         for _ in 0..max_steps {
-            self.step();
             if self.halted {
-                return RunOutcome::Halted;
+                break;
             }
+            let instruction = self.current_instruction();
+            self.step();
+            on_step(self, instruction);
         }
 
+        if self.halted {
+            return RunOutcome::Halted;
+        }
         RunOutcome::StepLimitReached
+    }
+
+    pub fn run(&mut self, max_steps: usize) -> RunOutcome {
+        self.run_with(max_steps, |_, _| {})
     }
 }
 
@@ -91,8 +128,10 @@ mod tests {
 
     #[test]
     fn step_does_nothing_when_halted() {
-        let mut cpu = Cpu::default();
-        cpu.halted = true;
+        let mut cpu = Cpu {
+            halted: true,
+            ..Default::default()
+        };
         let before = cpu.clone();
         cpu.step();
         assert_eq!(cpu, before);
@@ -107,8 +146,10 @@ mod tests {
 
     #[test]
     fn pc_wraps_after_last_address() {
-        let mut cpu = Cpu::default();
-        cpu.pc = Address::new(15).unwrap();
+        let mut cpu = Cpu {
+            pc: Address::new(15).unwrap(),
+            ..Default::default()
+        };
         cpu.step();
         assert_eq!(cpu.pc.get(), 0);
     }
