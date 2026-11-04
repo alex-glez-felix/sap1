@@ -1,6 +1,10 @@
+use ratatui::{
+    crossterm::event::{self, Event},
+    widgets::{Block, Paragraph},
+};
 use sap1::{RAM_SIZE, address::Address, cpu::Cpu, instruction::Instruction};
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let mut program = [0x00; RAM_SIZE];
 
     program[0] = Instruction::Lda(Address::new(8).unwrap()).encode();
@@ -16,20 +20,40 @@ fn main() {
 
     let mut cpu = Cpu::new(program);
 
-    let outcome = cpu.run_with(100, |cpu, instruction| {
-        let text = match instruction {
-            Some(i) => i.to_string(),
-            None => "???".to_string(),
-        };
+    let mut terminal = ratatui::init();
+    let result = run(&mut terminal, cpu);
+    ratatui::restore();
+    result
+}
 
-        println!(
-            "{0:<6}   PC={1:>2}  A={2:#010b} {2:#04x}  OUT={3:#010b} {3:#04x}",
-            text,
-            cpu.pc().get(),
-            cpu.a(),
-            cpu.out(),
-        )
-    });
+fn run(terminal: &mut ratatui::DefaultTerminal, mut cpu: Cpu) -> std::io::Result<()> {
+    loop {
+        terminal.draw(|frame| {
+            let text = match cpu.current_instruction() {
+                Some(instruction) => instruction.to_string(),
+                None => "???".to_string(),
+            };
 
-    println!("{outcome:?}");
+            let texto = format!(
+                "{0:<6}   PC={1:>2}  A={2:#010b} {2:#04x}  OUT={3:#010b} {3:#04x}",
+                text,
+                cpu.pc().get(),
+                cpu.a(),
+                cpu.out(),
+            );
+
+            let widget = Paragraph::new(texto).block(Block::bordered().title("Registros"));
+            frame.render_widget(widget, frame.area());
+        })?;
+
+        let e = event::read()?;
+
+        if let Event::Key(key) = e {
+            match key.code {
+                event::KeyCode::Char(' ') => cpu.step(),
+                event::KeyCode::Char('q') => return Ok(()),
+                _ => {}
+            }
+        }
+    }
 }
